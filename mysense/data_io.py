@@ -14,8 +14,30 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # --- LLM config -------------------------------------------------------------
-_GROQ_KEYS = [os.getenv("GROQ_KEY_1"), os.getenv("GROQ_KEY_2"), os.getenv("GROQ_KEY_3")]
+_KEY_NAMES = ["GROQ_KEY_1", "GROQ_KEY_2", "GROQ_KEY_3"]
 _MODEL = "llama-3.3-70b-versatile"
+
+
+def _groq_keys() -> list[str]:
+    """Collect Groq keys from either source, resolved at call time.
+
+    Local dev   -> environment / .env (loaded above by python-dotenv).
+    Streamlit Cloud -> st.secrets (set under the app's Settings → Secrets).
+    """
+    keys = [os.getenv(n) for n in _KEY_NAMES]
+    try:  # st.secrets raises if no secrets are configured — that's fine
+        import streamlit as st
+
+        keys += [st.secrets.get(n) for n in _KEY_NAMES]
+    except Exception:
+        pass
+    # de-dupe while preserving order, drop blanks
+    seen, out = set(), []
+    for k in keys:
+        if k and k not in seen:
+            seen.add(k)
+            out.append(k)
+    return out
 
 
 def load_csv(source) -> pd.DataFrame:
@@ -39,9 +61,9 @@ def call_groq(prompt: str) -> str:
     """
     from groq import Groq
 
-    keys = [k for k in _GROQ_KEYS if k]
+    keys = _groq_keys()
     if not keys:
-        raise ValueError("No Groq API key in .env (set GROQ_KEY_1).")
+        raise ValueError("No Groq API key found — set GROQ_KEY_1 in .env (local) or Streamlit secrets (cloud).")
     last_err = None
     for key in keys:
         try:
